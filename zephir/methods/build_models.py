@@ -2,6 +2,7 @@ from ..utils.utils import *
 
 from ..models.zephir import ZephIR
 from ..zephod.model import ZephOD
+from ..zephod.unet import UNet3D
 
 
 def build_models(
@@ -54,16 +55,21 @@ def build_models(
     # compiling Zephod models from existing kwargs and state_dict
     zephod_path = dataset / 'zephod.pt'
     if not zephod_path.is_file():
-        zephod_path = Path(__file__).parent.parent / 'zephod' / 'models.pt'
+        zephod_path = Path(__file__).parent.parent / 'zephod' / 'model.pt'
     if zephod_path.is_file():
         try:
             zephod_checkpoint = torch.load(str(zephod_path))
         except RuntimeError:
             print('*** CUDA NOT AVAILABLE! Mapping Zephod parameters to CPU...')
             zephod_checkpoint = torch.load(str(zephod_path), map_location=torch.device('cpu'))
-        zephod = ZephOD(**zephod_checkpoint['model_kwargs'])
-        zephod.load_state_dict(zephod_checkpoint['state_dict'])
+        print(f'Loading Zephod checkpoint: {zephod_path}')
+        if zephod_checkpoint.get('arch') == 'unet3d':
+            zephod = UNet3D(**zephod_checkpoint['model_kwargs'])
+            zephod.load_state_dict(zephod_checkpoint['state_dict'])
+        else:
+            zephod = ZephOD.from_checkpoint(zephod_checkpoint)
         zephod.to(dev)
+        zephod.eval()  # BatchNorm must use trained statistics during tracking
     else:
         print('******* ERROR: Zephod checkpoint file not found!')
         zephod = None

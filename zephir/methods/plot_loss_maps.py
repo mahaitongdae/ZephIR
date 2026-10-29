@@ -72,7 +72,7 @@ def plot_loss_maps(
         if lambda_d > 0 and zephod is not None:
             for _t in t_patch:
                 data = get_data(dataset, _t, g=gamma, c=channel)
-                _pred = zephod(data)
+                _pred = torch.sigmoid(zephod(data))
                 _pred = (torch.max(_pred) - _pred) / torch.max(_pred)
                 input_tensor_d.append(torch.where(_pred < 0.5, 0., 0.5))
             input_tensor_d = torch.stack(input_tensor_d, dim=0)

@@ -23,8 +23,10 @@ def rl_deconvolution(img, sigma=5, gamma=1.0, lam=12, n_iter=10):
     )
     for z in range(img.shape[0]):
         gray = (img[z].astype('float64') / (np.max(img[z]) + 1E-8)) ** (1 / gamma)
-        image_noisy = gray + (np.random.poisson(lam=lam, size=gray.shape) - 10) / 255
-        processed[z] = restoration.richardson_lucy(image_noisy, kernel[1], iterations=n_iter)
+        # fixed seed: same input gives the same detector output
+        noise = np.random.default_rng(z).poisson(lam=lam, size=gray.shape)
+        image_noisy = gray + (noise - 10) / 255
+        processed[z] = restoration.richardson_lucy(image_noisy, kernel[1], num_iter=n_iter)
 
     return processed * 255
 

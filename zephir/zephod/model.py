@@ -56,7 +56,21 @@ class ZephOD(nn.Module):
                       padding_mode='zeros')
         )
 
+    @classmethod
+    def from_checkpoint(cls, checkpoint):
+        """Build and load a model; also accepts the 2022 checkpoint layout
+        (extra img_shape kwarg, BatchNorm after the output conv)."""
+        kwargs = {k: v for k, v in checkpoint['model_kwargs'].items() if k != 'img_shape'}
+        model = cls(**kwargs)
+        state = checkpoint['state_dict']
+        if 'output_layer.1.weight' in state:
+            model.output_layer.append(nn.BatchNorm3d(model.n_channels_out))
+        model.load_state_dict(state)
+        return model
+
     def preprocess(self, vol):
+        # float copy: in-place scaling of an integer array would truncate to 0/1
+        vol = np.asarray(vol, dtype=np.float32).copy()
         with torch.no_grad():
             n_channel = vol.shape[0]
             for c in range(n_channel):

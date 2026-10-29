@@ -10,7 +10,7 @@ Options:
     -h --help                           show this message and exit.
     -v --version                        show version information and exit.
     --dataset=<dataset>                 path to data directory to analyze.
-    --model=<model>                     path to checkpoint for model.
+    --model=<model>                     checkpoint file, or a name in the zephod package folder.
     --channel=<channel>                 data channel to use as input.
     --cuda=<cuda>                       check if a CUDA-compatible GPU is available for  use. [default: True]
 """
@@ -20,6 +20,7 @@ from docopt import docopt
 from ..__version__ import __version__
 from ..utils.utils import *
 from .model import ZephOD
+from .unet import UNet3D
 
 
 def run_zephod(
@@ -27,10 +28,15 @@ def run_zephod(
         dev=torch.device('cpu'),
         channel=None,
         model_kwargs=None,
-        state_dict=None):
+        state_dict=None,
+        arch='zephod',
+        gamma=1.0):
 
-    model = ZephOD(**model_kwargs)
-    model.load_state_dict(state_dict)
+    if arch == 'unet3d':
+        model = UNet3D(**model_kwargs)
+        model.load_state_dict(state_dict)
+    else:
+        model = ZephOD.from_checkpoint({'model_kwargs': model_kwargs, 'state_dict': state_dict})
     model.to(dev)
     model.eval()
 
@@ -60,13 +66,13 @@ def run_zephod(
     t_list = get_times(dataset)
     tpbar = tqdm(t_list, desc='Analyzing movie', unit='frames')
     for t in tpbar:
-        vol = get_slice(dataset, t)
-        if channel is not None:
-            vol = vol[channel, np.newaxis, ...]
-        pred = model(vol)
+        # scaled float input, same as training and tracking
+        vol = get_data(dataset, t, g=gamma, c=channel)
+        with torch.no_grad():
+            pred = torch.sigmoid(model(vol))
 
         data.resize((t + 1, *vol.shape[1:]))
-        data[t, ...] = to_numpy(pred[0, 0])
+        data[t, ...] = to_numpy(pred[0, 0] * 255).astype(np.uint8)
         times.resize((t + 1,))
         times[t] = t
         rec.write(
@@ -95,8 +101,10 @@ def main():
 
     if args['--model'] is None:
         checkpoint_path = Path(__file__).parent / 'model.pt'
+    elif Path(args['--model']).is_file():
+        checkpoint_path = Path(args['--model'])
     else:
-        checkpoint_path = Path(__file__).parent / 'models' / Path(args['--model'] + '.pt')
+        checkpoint_path = Path(__file__).parent / Path(args['--model'] + '.pt')
     if Path.is_file(checkpoint_path):
         print('\nPrevious checkpoint available.')
         try:
@@ -114,6 +122,8 @@ def main():
         channel=int(args['--channel']) if args['--channel'] else None,
         model_kwargs=checkpoint['model_kwargs'],
         state_dict=checkpoint['state_dict'],
+        arch=checkpoint.get('arch', 'zephod'),
+        gamma=checkpoint.get('gamma', 1.0),
     )
 
 
